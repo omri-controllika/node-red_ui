@@ -64,20 +64,22 @@ class MQTTHandler:
         self.client.loop_stop()
         self.client.disconnect()
 
+
 # Example usage
 if __name__ == "__main__":
     # Configuration for attributes and their corresponding MQTT topics
     config = {
         "control_mode_sp": "site/control_mode_sp",
         "irradiance_sp": "site/irradiance_sp",
-        "load_sp": "site/load_sp",
-        "power": "meter/power",
-        "load_power": "site/load_power",
+        "load_kW_sp": "site/load_kW_sp",
+        "meter_power_kW": "meter/meter_power_kW",
+        "load_kW": "site/load_kW",
         "irradiance": "site/irradiance",
         "control_mode": "site/control_mode",
         "production_kW": "pv/production_kW",
         "p_limit": "pv/p_limit",
-        "p_limit_kW": "pv/p_limit_kW"
+        "p_limit_kW": "pv/p_limit_kW",
+        "pv_rating_kW": "pv/rating_kW"
     }
 
     handler = MQTTHandler(
@@ -89,15 +91,62 @@ if __name__ == "__main__":
 
     handler.start()
 
+    control_modes = ['zero export', 'full production', 'zero production']
+
+    handler.data["control_mode_sp"] = 'full production'
+    handler.data["irradiance_sp"] = 100
+    handler.data["load_kW_sp"] = 100
+    handler.data["meter_power_kW"] = 0
+    handler.data["load_kW"] = 0
+    handler.data["irradiance"] = 100 
+    handler.data["control_mode"] = 'full production'
+    handler.data["production_kW"] = 0
+    handler.data["p_limit"] = 0
+    handler.data["p_limit_kW"] = 0
+    handler.data["pv_rating_kW"] = 500
+
     try:
         while True:
-            # Example: Access the latest data by attributes and their last update time
-            for attr, value in handler.data.items():
-                last_update = handler.last_update_time.get(attr, 0)
-                if last_update:
-                    last_update = round(last_update, 1)
-                print(f"{attr}: {value} (Last updated: {last_update})")
-            handler.data["control_mode"] = handler.data["control_mode_sp"]
+
+            if handler.data["control_mode_sp"] in control_modes:
+                handler.data["control_mode"] = handler.data["control_mode_sp"]
+            else:
+                # todo log
+                pass
+
+            control_mode_sp = handler.data["control_mode_sp"]
+            irradiance_sp = handler.data["irradiance_sp"]
+            load_kW_sp = handler.data["load_kW_sp"]
+            meter_power_kW = handler.data["meter_power_kW"]
+            load_kW = load_kW_sp
+            irradiance = irradiance_sp
+            handler.data["irradiance"] = irradiance
+            control_mode = handler.data["control_mode"]
+            production_kW = handler.data["production_kW"]
+            p_limit = handler.data["p_limit"]
+            # p_limit_kW = handler.data["p_limit_kW"]
+            pv_rating_kW = handler.data["pv_rating_kW"]
+
+            handler.data["load_kW"] = load_kW
+
+            meter_power_kW = load_kW - production_kW
+            handler.data["meter_power_kW"] = meter_power_kW
+
+            if control_mode == 'full production':
+                p_limit = 100
+            elif control_mode == 'zero production':
+                p_limit = 0
+            elif control_mode == 'zero export':
+                # todo
+                pass
+
+            p_limit_kW = p_limit * pv_rating_kW /100
+            handler.data["p_limit_kW"] = p_limit_kW
+            handler.data["p_limit"] = p_limit
+
+            production = pv_rating_kW * min(p_limit, irradiance)/100
+            handler.data["production_kW"] = production
+
             time.sleep(0.15)
             print('\n')
     except KeyboardInterrupt:
