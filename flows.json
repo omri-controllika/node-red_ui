@@ -344,5 +344,49 @@
         "x": 750,
         "y": 420,
         "wires": []
+    },
+    {
+        "id": "f2ee09b23c754dc6",
+        "type": "mqtt out",
+        "z": "a98cfac94961e7b8",
+        "name": "",
+        "topic": "site/load_kW_sp",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "e6f9564d48367a5d",
+        "x": 740,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "c171316d7f7228ec",
+        "type": "ui_text_input",
+        "z": "a98cfac94961e7b8",
+        "name": "",
+        "label": "load kW",
+        "tooltip": "",
+        "group": "58f3ebd5cf053194",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "mode": "number",
+        "delay": 300,
+        "topic": "topic",
+        "sendOnBlur": true,
+        "className": "",
+        "topicType": "msg",
+        "x": 460,
+        "y": 480,
+        "wires": [
+            [
+                "f2ee09b23c754dc6"
+            ]
+        ]
     }
 ]
