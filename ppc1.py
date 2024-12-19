@@ -57,10 +57,20 @@ class MQTTHandler:
         self.client.disconnect()
 
 class MQTTEngineEntity:
-    def __init__(self, handler: MQTTHandler, config):
-        self.handler = handler
-        self._config = config
+    def __init__(self, handler: MQTTHandler, config, defaults=None):
+        self.__dict__["handler"] = handler
+        self.__dict__["_config"] = config
         self.handler.add_config(config)
+        self.__initialize_defaults(defaults or {})
+
+    def __initialize_defaults(self, defaults):
+        """Initialize default values for MQTT attributes and synchronize to handler data."""
+        for attr, value in defaults.items():
+            self.handler.data[attr] = value  # Set the handler data directly
+            topic = self._config.get(attr)
+            if topic:
+                self.handler.client.publish(topic, json.dumps(value))  # Publish immediately
+            self.__dict__[attr] = value  # Set the local attribute without triggering setattr
 
     def __setattr__(self, name, value):
         """Intercept attribute setting to send updates to MQTT."""
@@ -87,23 +97,45 @@ class Site(MQTTEngineEntity):
             "irradiance_sp": "site/irradiance_sp",
             "load_kW_sp": "site/load_kW_sp"
         }
-        super().__init__(handler, config)
+        defaults = {
+            "control_mode": "zero production",
+            "control_mode_sp": "zero production",
+            "irradiance": 100,
+            "irradiance_sp": 100,
+            "load_kW": 0,
+            "load_kW_sp": 0
+        }
+        super().__init__(handler, config, defaults)
 
 class Inverter(MQTTEngineEntity):
     def __init__(self, handler):
         config = {
             "production_kW": "inverter/production_kW",
             "p_limit": "inverter/p_limit",
+            "p_limit_kW": "inverter/p_limit_kW",
+            "rating_kW_sp": "inverter/rating_kW_sp",
+            "rating_kW": "inverter/rating_kW",
             "status": "inverter/status"
         }
-        super().__init__(handler, config)
+        defaults = {
+            "production_kW": 0,
+            "p_limit": 100,
+            "p_limit_kW": 0,
+            "rating_kW_sp": 0,
+            "rating_kW": 0,
+            "status": "ON"
+        }
+        super().__init__(handler, config, defaults)
 
 class Meter(MQTTEngineEntity):
     def __init__(self, handler):
         config = {
-            "power": "meter/power"
+            "power_kW": "meter/power_kW"
         }
-        super().__init__(handler, config)
+        defaults = {
+            "power_kW": 0
+        }
+        super().__init__(handler, config, defaults)
 
 # Example usage
 if __name__ == "__main__":
@@ -121,10 +153,36 @@ if __name__ == "__main__":
 
     try:
         while True:
-            # Example: Access data for each entity
-            print(f"Site Load: {site.load_kW}")
-            print(f"Inverter Production: {inverter.production_kW}")
-            print(f"Meter Power: {meter.power}")
+            try:
+                if site.control_mode_sp in ["zero export", "zero production", "full production"]:
+                    site.control_mode = site.control_mode_sp
+
+                if isinstance(inverter.rating_kW_sp, (int, float)) and int(inverter.rating_kW_sp) >= 0:
+                    inverter.rating_kW = inverter.rating_kW_sp
+
+                if isinstance(site.load_kW_sp, (int, float)) and site.load_kW_sp >= 0:
+                    site.load_kW = site.load_kW_sp
+
+                inverter.production_kW = inverter.rating_kW * min(inverter.p_limit, site.irradiance) / 100
+
+                if site.control_mode == "zero production":
+                    inverter.p_limit = 0
+                elif site.control_mode == "full production":
+                    inverter.p_limit = 100
+                elif site.control_mode == "zero export":
+                    meter.power_kW = site.load_kW - inverter.production_kW
+                    if meter.power_kW < 0:
+                        export = abs(meter.power_kW)
+                        p_limit_kW = inverter.production_kW - export
+                        p_limit_kW = p_limit_kW if p_limit_kW >= 0 else 0
+                        inverter.p_limit = p_limit_kW / inverter.rating_kW
+
+                print('\n')
+                for param in handler.data:
+                    print(f'{param} {handler.data[param]}')
+
+            except Exception as ex:
+                print(f"main loop exception: {ex}")
             time.sleep(1)
     except KeyboardInterrupt:
         handler.stop()
